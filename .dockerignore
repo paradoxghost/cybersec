@@ -1,0 +1,22 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+.env
+
+# Local/generated artifacts
+data/raw/
+data/interim/
+data/processed/
+models/
+reports/metrics/
+reports/figures/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
