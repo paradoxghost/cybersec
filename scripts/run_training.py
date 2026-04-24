@@ -8,7 +8,7 @@ from src.data.load_data import load_dataset
 from src.data.sampling import sample_dataframe
 from src.data.split_data import split_dataset
 from src.features.preprocess import fit_preprocessor, transform_features
-from src.models.metrics import compute_classification_metrics
+from src.models.metrics import compute_classification_metrics, resolve_benign_label
 from src.models.registry import ModelBundle, save_bundle
 from src.models.train_baseline import train_baseline_model
 from src.models.train_tree_model import train_tree_model
@@ -31,19 +31,23 @@ def main() -> None:
     set_seed(cfg["project"]["random_seed"])
     logger = logging.getLogger("run_training")
 
+    target = cfg["schema"]["target_column"]
     df = load_dataset(cfg["paths"]["raw_data_path"])
+    if target not in df.columns:
+        raise ValueError(f"Configured target column '{target}' not found in dataset.")
+
     if cfg["sampling"]["enabled"]:
         df = sample_dataframe(
             df,
             cfg["sampling"]["max_rows"],
             cfg["sampling"]["strategy"],
-            cfg["schema"]["target_column"],
+            target,
             cfg["project"]["random_seed"],
         )
 
     split = split_dataset(
         df=df,
-        target_column=cfg["schema"]["target_column"],
+        target_column=target,
         train_size=cfg["split"]["train_size"],
         val_size=cfg["split"]["val_size"],
         test_size=cfg["split"]["test_size"],
@@ -53,10 +57,16 @@ def main() -> None:
     )
 
     train_df, val_df, test_df = split["train"], split["val"], split["test"]
-    target = cfg["schema"]["target_column"]
-    X_train, y_train = train_df.drop(columns=[target]), train_df[target].astype(str)
-    X_val, y_val = val_df.drop(columns=[target]), val_df[target].astype(str)
-    X_test, y_test = test_df.drop(columns=[target]), test_df[target].astype(str)
+
+    excluded_feature_columns = set(cfg["schema"].get("id_columns", []))
+    if cfg["schema"].get("timestamp_column"):
+        excluded_feature_columns.add(cfg["schema"]["timestamp_column"])
+    if cfg["schema"].get("group_column"):
+        excluded_feature_columns.add(cfg["schema"]["group_column"])
+
+    candidate_features = [c for c in train_df.columns if c != target and c not in excluded_feature_columns]
+    X_train, y_train = train_df[candidate_features], train_df[target].astype(str)
+    X_val, y_val = val_df[candidate_features], val_df[target].astype(str)
 
     prep_art = fit_preprocessor(
         X_train, y_train, cfg["preprocessing"]["imputer_strategy"], cfg["preprocessing"]["scale_numeric"]
@@ -68,16 +78,41 @@ def main() -> None:
     baseline_model = train_baseline_model(X_train_t, y_train_enc, cfg["models"]["baseline"]["params"])
     tree_model = train_tree_model(X_train_t, y_train_enc, cfg["models"]["stronger"]["params"])
 
-    benign_label = cfg["schema"]["benign_labels"][0]
-    baseline_metrics = _evaluate(baseline_model, prep_art.feature_pipeline, prep_art.label_encoder, X_val, y_val, benign_label)
-    stronger_metrics = _evaluate(tree_model, prep_art.feature_pipeline, prep_art.label_encoder, X_val, y_val, benign_label)
+    benign_label = resolve_benign_label(cfg["schema"]["benign_labels"], list(prep_art.label_encoder.classes_))
+    baseline_metrics = _evaluate(
+        baseline_model, prep_art.feature_pipeline, prep_art.label_encoder, X_val, y_val, benign_label
+    )
+    stronger_metrics = _evaluate(
+        tree_model, prep_art.feature_pipeline, prep_art.label_encoder, X_val, y_val, benign_label
+    )
 
-    save_bundle(ModelBundle("baseline_model", baseline_model, prep_art.feature_pipeline, prep_art.label_encoder, prep_art.feature_columns), cfg["paths"]["models_dir"])
-    save_bundle(ModelBundle("stronger_model", tree_model, prep_art.feature_pipeline, prep_art.label_encoder, prep_art.feature_columns), cfg["paths"]["models_dir"])
+    save_bundle(
+        ModelBundle(
+            "baseline_model",
+            baseline_model,
+            prep_art.feature_pipeline,
+            prep_art.label_encoder,
+            prep_art.feature_columns,
+        ),
+        cfg["paths"]["models_dir"],
+    )
+    save_bundle(
+        ModelBundle(
+            "stronger_model",
+            tree_model,
+            prep_art.feature_pipeline,
+            prep_art.label_encoder,
+            prep_art.feature_columns,
+        ),
+        cfg["paths"]["models_dir"],
+    )
 
     train_manifest = {
         "split_strategy": split["split_strategy"],
         "rows": {"train": len(train_df), "val": len(val_df), "test": len(test_df)},
+        "excluded_feature_columns": sorted(excluded_feature_columns),
+        "n_model_features": len(prep_art.feature_columns),
+        "benign_label_used": benign_label,
         "baseline_val_metrics": baseline_metrics,
         "stronger_val_metrics": stronger_metrics,
     }

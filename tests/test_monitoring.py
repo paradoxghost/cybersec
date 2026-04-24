@@ -1,5 +1,6 @@
 import pandas as pd
 
+from src.models.metrics import resolve_benign_label
 from src.monitoring.alert_rate import compute_alert_rate, detect_alert_spike
 from src.monitoring.drift import jensen_shannon_divergence_from_counts, population_stability_index
 
@@ -20,3 +21,8 @@ def test_alert_rate_detection():
     spike = detect_alert_spike(0.2, rate, threshold=0.1)
     assert rate == 0.5
     assert spike["spike"] is True
+
+
+def test_resolve_benign_label_prefers_existing_class():
+    selected = resolve_benign_label(["benign", "Benign"], ["DDoS", "Benign"])
+    assert selected == "Benign"

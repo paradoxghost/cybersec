@@ -99,6 +99,7 @@ Generated under `reports/metrics/`:
 ## Key design choices
 - **Random Forest** chosen as stronger model: robust tabular baseline with simple, reproducible training.
 - **Shared preprocessing artifact** ensures train/inference consistency.
+- **Leakage guardrails**: configured ID/time/group columns are excluded from model features during training.
 - **Fallback split strategy**: if no timestamp/group metadata exists, stratified random split is used and documented.
 
 ## Interview explanation (simple language)

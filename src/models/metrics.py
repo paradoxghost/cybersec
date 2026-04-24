@@ -15,6 +15,18 @@ from sklearn.metrics import (
 )
 
 
+def resolve_benign_label(candidate_labels: list[str], class_labels: list[str]) -> str:
+    """Resolve a benign label that actually exists in current class labels.
+
+    Falls back to the first class label to avoid silent metric corruption.
+    """
+    class_set = set(str(v) for v in class_labels)
+    for label in candidate_labels:
+        if str(label) in class_set:
+            return str(label)
+    return str(class_labels[0])
+
+
 def false_positive_rate_on_benign(y_true: np.ndarray, y_pred: np.ndarray, benign_label: str) -> float:
     benign_mask = y_true == benign_label
     if benign_mask.sum() == 0:
@@ -45,6 +57,7 @@ def compute_classification_metrics(
         "confusion_matrix": confusion_matrix(y_true, y_pred, labels=labels).tolist(),
         "false_positive_rate_on_benign": false_positive_rate_on_benign(y_true, y_pred, benign_label),
         "classification_report": classification_report(y_true, y_pred, labels=labels, zero_division=0),
+        "benign_label_used": benign_label,
     }
 
     if y_prob is not None and y_prob.ndim == 2 and y_prob.shape[1] == len(labels):
