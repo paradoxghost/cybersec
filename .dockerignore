@@ -12,6 +12,7 @@ __pycache__/
 data/raw/
 data/interim/
 data/processed/
+models/
 reports/metrics/
 reports/figures/
 
