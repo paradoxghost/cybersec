@@ -11,7 +11,7 @@ paths:
   reports_figures_dir: "reports/figures"
 
 schema:
-  target_column: "label" # Set target column here
+  target_column: "Label" # Set target column here
   timestamp_column: null   # Set time column here if available
   group_column: null       # Set group column here if available
   id_columns: ["flow_id", "id"]
